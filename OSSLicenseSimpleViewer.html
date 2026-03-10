@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>OSS License Simple Viewer (HTML Version)</title>
+    <style>
+        :root { --primary: #2ecc71; --secondary: #3498db; --bg: #f4f7f9; --text: #2c3e50; }
+        body { font-family: "Helvetica Neue", Arial, "Hiragino Kaku Gothic ProN", "Hiragino Sans", "Meiryo", sans-serif; line-height: 1.6; color: var(--text); max-width: 1200px; margin: 20px auto; padding: 0 20px; background-color: var(--bg); }
+        .card { background: #ffffff; padding: 20px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); margin-bottom: 20px; }
+        .header-area { border-bottom: 4px solid var(--primary); padding-bottom: 10px; margin-bottom: 25px; }
+        h1 { margin: 0; font-size: 1.6rem; color: #1a252f; }
+        
+        .load-panel { background: #fff3e0; border: 2px dashed #ff9800; padding: 20px; text-align: center; border-radius: 8px; }
+        .load-panel.success { background: #e8f8f5; border: 2px solid var(--primary); color: #16a085; }
+
+        /* フィルタパネル */
+        .filter-panel { background: #ebf5fb; border: 1px solid #d6eaf8; }
+        .filter-group { display: flex; gap: 20px; align-items: center; flex-wrap: wrap; }
+        .filter-label { font-weight: bold; min-width: 180px; color: #2980b9; }
+        .btn-group { display: flex; gap: 8px; }
+        .btn-filter { padding: 8px 18px; border: 2px solid #3498db; background: white; cursor: pointer; border-radius: 25px; font-weight: 600; transition: 0.2s; color: #3498db; }
+        .btn-filter:hover { background: #f0f7ff; }
+        .btn-filter.active { background: #3498db; color: white; box-shadow: 0 2px 5px rgba(52,152,219,0.3); }
+
+        /* カスタムリストのスタイル */
+        .action-list { border: 1px solid #dcdde1; border-radius: 8px; max-height: 400px; overflow-y: auto; background: #fff; }
+        .action-item { padding: 15px 20px; border-bottom: 1px solid #f1f2f6; cursor: pointer; transition: 0.2s; font-size: 0.95rem; line-height: 1.5; color: #34495e; }
+        .action-item:last-child { border-bottom: none; }
+        .action-item:hover { background-color: #f8faff; color: var(--secondary); }
+        .action-item.selected { background-color: #eaf2f8; border-left: 6px solid var(--secondary); color: #1b4f72; font-weight: bold; }
+
+        .search-box { width: 100%; padding: 12px; border-radius: 6px; border: 1px solid #ccd1d9; margin-bottom: 10px; font-size: 1rem; }
+        select#select-license { width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #ccd1d9; font-size: 1rem; height: 160px; }
+
+        .section-title { font-weight: bold; background: #f1f2f6; padding: 10px 15px; border-left: 5px solid var(--primary); margin: 25px 0 12px 0; border-radius: 0 4px 4px 0; }
+        .content-box { white-space: pre-wrap; background: #fff; border: 1px solid #f1f2f6; padding: 18px; border-radius: 6px; min-height: 40px; word-break: break-all; }
+        .fulltext-box { font-family: "Consolas", "Monaco", monospace; font-size: 0.85em; background-color: #fdfdfd; max-height: 400px; overflow-y: auto; color: #444; border: 1px solid #eee; }
+
+        .node { margin-left: 25px; border-left: 2px dotted #bdc3c7; padding-left: 15px; margin-top: 10px; }
+        .node-type { font-weight: bold; color: #e67e22; background: #fef5e7; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem; text-transform: uppercase; }
+        
+        .notice-item { margin-bottom: 15px; padding: 15px; border-radius: 6px; border-left: 8px solid #bdc3c7; background: #f9f9f9; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+        .alert-high { border-left-color: #e74c3c; background: #fff5f5; }
+        .alert-middle { border-left-color: #f1c40f; background: #fffdf0; }
+        .alert-low { border-left-color: #3498db; background: #f0f7ff; }
+        
+        .hidden { display: none; }
+        label { display: block; margin-bottom: 8px; font-weight: bold; color: #555; }
+    </style>
+</head>
+<body>
+
+<div class="header-area">
+    <h1>OSS License Simple Viewer (HTML Version)</h1>
+</div>
+
+<div id="load-panel" class="load-panel">
+    <p id="load-msg"><strong>Step 0: JSONデータを一括読み込みしてください</strong><br>(4つのファイルをまとめて選択)</p>
+    <input type="file" id="json-files" multiple accept=".json">
+</div>
+
+<div id="viewer-ui" class="hidden">
+    <div class="card">
+        <label>1. OSS License を選択</label>
+        <input type="text" id="lic-search" class="search-box" placeholder="ライセンス名で絞り込み (例: Apache, MIT...)">
+        <select id="select-license" size="5"></select>
+    </div>
+
+    <div class="card filter-panel">
+        <div class="filter-group">
+            <div class="filter-label">Q1. 外部へ頒布(配布)するか？</div>
+            <div class="btn-group">
+                <button class="btn-filter active" onclick="setDist(this, 'all')">すべて表示</button>
+                <button class="btn-filter" onclick="setDist(this, 'no')">しない(内部利用)</button>
+                <button class="btn-filter" onclick="setDist(this, 'yes')">する(頒布・配布)</button>
+            </div>
+        </div>
+        <div id="q2-area" class="filter-group" style="margin-top: 18px; opacity: 0.3; pointer-events: none;">
+            <div class="filter-label">Q2. 頒布(配布)する形式は？</div>
+            <div class="btn-group">
+                <button class="btn-filter active" onclick="setFormat(this, 'all')">すべて</button>
+                <button class="btn-filter" onclick="setFormat(this, 'source')">ソースコード</button>
+                <button class="btn-filter" onclick="setFormat(this, 'binary')">バイナリ(オブジェクトコード/実行形式)</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <label>2. 具体的な Action (ユースケース) を選択してください</label>
+        <div id="action-list-container" class="action-list">
+            <div style="padding: 20px; color: #999; text-align: center;">ライセンスを選択するとここにActionが表示されます</div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="section-title">Comment (要約)</div>
+        <div id="out-comment" class="content-box"></div>
+
+        <div class="section-title">Conditions (適用される義務・条件)</div>
+        <div id="out-conditions" class="content-box"></div>
+
+        <div class="section-title">Notices / Disclaimers (免責事項・法的注意)</div>
+        <div id="out-notices" class="content-box" style="border:none; padding:0; background:transparent;"></div>
+
+        <div class="section-title">License Full Text (本文)</div>
+        <div id="out-fulltext" class="content-box fulltext-box"></div>
+    </div>
+</div>
+
+<script>
+    let db = { actions: [], conditions: [], licenses: [], notices: [] };
+    let filter = { dist: 'all', format: 'all' };
+    let selectedActionId = null;
+
+    // 自動読み込み (サーバ環境用)
+    window.addEventListener('DOMContentLoaded', async () => {
+        const files = ['actions.json', 'conditions.json', 'licenses.json', 'notices.json'];
+        try {
+            const results = await Promise.all(files.map(f => fetch(`./data/${f}`).then(r => r.json())));
+            db.actions = results[0]; db.conditions = results[1]; db.licenses = results[2]; db.notices = results[3];
+            onDataLoaded("Auto-loaded from /data/.");
+        } catch (e) {}
+    });
+
+    // 手動ファイル読み込み
+    document.getElementById('json-files').addEventListener('change', async (e) => {
+        const files = Array.from(e.target.files);
+        for (const file of files) {
+            const json = JSON.parse(await file.text());
+            const name = file.name.toLowerCase();
+            if (name.includes('actions')) db.actions = json;
+            else if (name.includes('conditions')) db.conditions = json;
+            else if (name.includes('licenses')) db.licenses = json;
+            else if (name.includes('notices')) db.notices = json;
+        }
+        if(db.actions.length && db.licenses.length) onDataLoaded("4 JSON files loaded.");
+    });
+
+    function onDataLoaded(msg) {
+        document.getElementById('load-panel').classList.add('success');
+        document.getElementById('load-msg').innerHTML = `<strong>OK: ${msg}</strong>`;
+        document.getElementById('viewer-ui').classList.remove('hidden');
+        populateLicenseList("");
+    }
+
+    function populateLicenseList(q) {
+        const sel = document.getElementById('select-license');
+        sel.innerHTML = '';
+        db.licenses.filter(l => l.data.name.toLowerCase().includes(q.toLowerCase()))
+                   .sort((a,b) => a.data.name.localeCompare(b.data.name))
+                   .forEach(l => sel.add(new Option(l.data.name, l.data.id)));
+    }
+
+    document.getElementById('lic-search').addEventListener('input', (e) => populateLicenseList(e.target.value));
+
+    // フィルタ操作
+    function setDist(btn, val) {
+        updateBtnStyle(btn);
+        filter.dist = val;
+        const q2 = document.getElementById('q2-area');
+        if (val === 'yes') { q2.style.opacity = "1"; q2.style.pointerEvents = "auto"; }
+        else { q2.style.opacity = "0.3"; q2.style.pointerEvents = "none"; filter.format = 'all'; resetQ2Btns(); }
+        updateActionList();
+    }
+
+    function setFormat(btn, val) { updateBtnStyle(btn); filter.format = val; updateActionList(); }
+    function updateBtnStyle(btn) { Array.from(btn.parentNode.children).forEach(b => b.classList.remove('active')); btn.classList.add('active'); }
+    function resetQ2Btns() { const btns = document.getElementById('q2-area').querySelectorAll('.btn-filter'); btns.forEach(b => b.classList.remove('active')); btns[0].classList.add('active'); }
+
+    // Actionリストの更新 (カスタムリスト版)
+    function updateActionList() {
+        const licId = document.getElementById('select-license').value;
+        const container = document.getElementById('action-list-container');
+        container.innerHTML = '';
+        selectedActionId = null;
+
+        if (!licId) return;
+
+        const license = db.licenses.find(l => l.data.id === licId);
+        const availableIds = new Set();
+        license.data.permissions?.forEach(p => p.actions?.forEach(a => availableIds.add(a.ref)));
+
+        const filtered = db.actions.filter(a => {
+            if (!availableIds.has(a.data.id)) return false;
+            const txt = (a.data.name[0]?.text || "").toLowerCase();
+            const isDist = txt.includes("頒布") || txt.includes("配布") || txt.includes("提供") || txt.includes("リンク");
+            
+            if (filter.dist === 'no' && isDist) return false;
+            if (filter.dist === 'yes' && !isDist) return false;
+
+            if (filter.dist === 'yes' && filter.format !== 'all') {
+                const hasSourceAndDist = txt.includes("ソース") && (txt.includes("頒布") || txt.includes("配布") || txt.includes("提供"));
+                const isFromSource = txt.includes("ソースコードから") || txt.includes("ソースコードを用いて生成");
+                const isObjectSource = txt.includes("ソースコードを") || txt.includes("ソース形式") || txt.includes("ソースを頒布");
+                const isSourceAction = (hasSourceAndDist && !isFromSource) || isObjectSource;
+
+                if (filter.format === 'source') return isSourceAction;
+                if (filter.format === 'binary') return !isSourceAction;
+            }
+            return true;
+        });
+
+        if (filtered.length === 0) {
+            container.innerHTML = '<div style="padding:20px; color:#e74c3c;">条件に合うユースケースが見つかりません。フィルタ設定を変えてみてください。</div>';
+            return;
+        }
+
+        filtered.forEach(act => {
+            const item = document.createElement('div');
+            item.className = 'action-item';
+            item.textContent = act.data.name[0]?.text;
+            item.onclick = () => selectAction(item, act.data.id);
+            container.appendChild(item);
+        });
+    }
+
+    function selectAction(element, actId) {
+        // 表示の更新
+        Array.from(element.parentNode.children).forEach(el => el.classList.remove('selected'));
+        element.classList.add('selected');
+        selectedActionId = actId;
+
+        // データ反映
+        const licId = document.getElementById('select-license').value;
+        const license = db.licenses.find(l => l.data.id === licId);
+        const permission = license.data.permissions.find(p => p.actions?.some(a => a.ref === actId));
+
+        document.getElementById('out-comment').textContent = license.data.summary[0]?.text || "---";
+        document.getElementById('out-fulltext').textContent = license.data.content || "Full text not available.";
+
+        const condBox = document.getElementById('out-conditions');
+        condBox.innerHTML = '';
+        if (permission?.conditionHead) renderCondition(permission.conditionHead, condBox);
+
+        const noticeBox = document.getElementById('out-notices');
+        noticeBox.innerHTML = '';
+        license.data.notices?.forEach(ref => {
+            const n = db.notices.find(x => x.data.id === ref.ref);
+            if (n) {
+                const txt = n.data.content[0]?.text || "";
+                let cls = "";
+                if (txt.includes("責任") || txt.includes("保証") || txt.includes("AS IS")) cls = "alert-high";
+                else if (txt.includes("ただし") || txt.includes("注意")) cls = "alert-middle";
+                else if (txt.includes("著作権")) cls = "alert-low";
+                const d = document.createElement('div');
+                d.className = `notice-item ${cls}`;
+                d.innerHTML = `<strong>[${n.data.id}]</strong><br>${txt}`;
+                noticeBox.appendChild(d);
+            }
+        });
+    }
+
+    document.getElementById('select-license').addEventListener('change', updateActionList);
+
+    function renderCondition(node, container) {
+        const div = document.createElement('div'); div.className = 'node';
+        if (node.type === 'LEAF') {
+            const c = db.conditions.find(x => x.data.id === node.ref);
+            div.innerHTML = `<span>${c?.data.name[0]?.text || node.ref}</span>`;
+        } else {
+            div.innerHTML = `<span class="node-type">${node.type}</span>`;
+            node.children?.forEach(child => renderCondition(child, div));
+        }
+        container.appendChild(div);
+    }
+</script>
+</body>
+</html>
